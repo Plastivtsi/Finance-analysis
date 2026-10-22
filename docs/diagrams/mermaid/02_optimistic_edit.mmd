@@ -1,0 +1,31 @@
+sequenceDiagram
+    autonumber
+    participant A as Телефон
+    participant B as Ноутбук
+    participant S as REST API
+    participant D as PostgreSQL
+    Note over A,D: CF-02 • Проєктне рішення • дві форми одного власника
+    A->>S: GET expense E
+    S->>D: SELECT E з перевіркою власника
+    D-->>S: amount 100, version 7
+    S-->>A: expense E, version 7
+    B->>S: GET expense E
+    S->>D: SELECT E з перевіркою власника
+    D-->>S: amount 100, version 7
+    S-->>B: expense E, version 7
+    par Конкурентне збереження
+        A->>S: PUT amount 120<br/>expectedVersion 7
+    and Стара форма
+        B->>S: PUT amount 130<br/>expectedVersion 7
+    end
+    S->>D: UPDATE amount=120, version=8<br/>WHERE id=E AND version=7 AND owner=user
+    D-->>S: 1 рядок · COMMIT
+    S-->>A: 200, version 8
+    S->>D: UPDATE amount=130, version=8<br/>WHERE id=E AND version=7 AND owner=user
+    D-->>S: 0 рядків
+    S-->>B: 409 VERSION_CONFLICT
+    B->>S: GET актуальної витрати
+    S->>D: SELECT E з перевіркою власника
+    D-->>S: amount 120, version 8
+    S-->>B: amount 120, version 8
+    Note over B,S: Користувач узгоджує зміни перед новим PUT

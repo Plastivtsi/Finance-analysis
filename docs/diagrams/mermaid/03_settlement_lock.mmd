@@ -1,0 +1,25 @@
+sequenceDiagram
+    autonumber
+    participant C as Одержувач
+    participant A as API запит A
+    participant B as API запит B
+    participant D as PostgreSQL
+    Note over C,D: CF-03 • Проєктне рішення • settlement S у стані pending
+    par Вкладка 1
+        C->>A: POST confirm S
+    and Вкладка 2
+        C->>B: POST confirm S
+    end
+    A->>D: BEGIN · lock group G<br/>SELECT FOR UPDATE
+    A->>D: lock settlement S<br/>перевірити одержувача і pending
+    B->>D: BEGIN · lock group G<br/>SELECT FOR UPDATE
+    Note over B,D: Запит B чекає звільнення group lock
+    A->>D: Перевірити суму та залишок<br/>UPDATE S = confirmed · INSERT audit
+    A->>D: COMMIT · звільнити блокування
+    A-->>C: 200, S confirmed
+    D-->>B: Group lock отримано
+    B->>D: lock S · перечитати стан і права
+    D-->>B: S уже confirmed
+    B->>D: COMMIT без повторної зміни
+    B-->>C: 200, той самий S confirmed
+    Note over C,D: Облік боргу враховує S лише один раз

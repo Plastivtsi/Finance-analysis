@@ -1,0 +1,23 @@
+flowchart TD
+    U[Користувач] --> FE[Frontend: React / TypeScript]
+    FE <-->|HTTPS / REST API| BE[Backend: Python / FastAPI]
+
+    subgraph Backend modules
+        AUTH[Автентифікація та доступ]
+        EXP[Особисті витрати й категорії]
+        GROUP[Групові витрати та розрахунки]
+        ANALYTICS[Аналітика й звіти]
+    end
+
+    BE --> AUTH
+    BE --> EXP
+    BE --> GROUP
+    BE --> ANALYTICS
+
+    AUTH --> DB[(PostgreSQL)]
+    EXP --> DB
+    GROUP --> DB
+    ANALYTICS --> DB
+
+    EXP -. запит на класифікацію .-> ML[ML-компонент]
+    ML -. категорія та оцінка впевненості .-> EXP

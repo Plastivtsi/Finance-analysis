@@ -1,0 +1,30 @@
+sequenceDiagram
+    autonumber
+    participant C as Web UI
+    participant A as API запит A
+    participant B as API повтор B
+    participant D as PostgreSQL
+    Note over C,D: CF-01 • Проєктне рішення • один користувач і ключ K
+    par Перша спроба
+        C->>A: POST /api/expenses<br/>Key K, hash H
+    and Повтор через затримку
+        C->>B: POST /api/expenses<br/>Key K, hash H
+    end
+    A->>D: BEGIN · INSERT ключ K<br/>ON CONFLICT DO NOTHING
+    D-->>A: Ключ зарезервовано
+    B->>D: BEGIN · INSERT ключ K<br/>ON CONFLICT DO NOTHING
+    Note over B,D: UNIQUE змушує B чекати транзакцію A
+    A->>D: INSERT expense E<br/>Зберегти H і відповідь 201 з E
+    A->>D: COMMIT
+    A--xC: Відповідь 201 загубилась
+    D-->>B: INSERT не додав рядка
+    B->>D: SELECT ключ K<br/>окремий запит після очікування
+    D-->>B: Збережені hash H та відповідь
+    alt Хеш тіла збігається
+        B->>D: COMMIT
+        B-->>C: Збережена 201, expenseId E
+    else Ключ повторили з іншим тілом
+        B->>D: ROLLBACK
+        B-->>C: 409 IDEMPOTENCY_KEY_REUSED
+    end
+    Note over C,D: Витрата та відповідь фіксуються атомарно
