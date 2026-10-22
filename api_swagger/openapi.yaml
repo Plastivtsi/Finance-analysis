@@ -1,3 +1,290 @@
+openapi: 3.0.3
+info:
+  title: Smart Spend Tracker API
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000
+tags:
+  - name: Auth
+  - name: Expenses
+  - name: Categories
+  - name: Analytics
+  - name: System
+security:
+  - BearerAuth: []
+paths:
+  /api/health:
+    get:
+      tags: [System]
+      summary: Перевірити доступність API
+      description: Публічний ендпоїнт перевірки стану сервісу.
+      security: []
+      responses:
+        '200':
+          description: API працює
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: {type: string, example: ok}
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Реєстрація користувача
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RegisterRequest'}
+      responses:
+        '201': {description: Користувача зареєстровано}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {$ref: '#/components/responses/RateLimit'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Вхід у систему
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LoginRequest'}
+      responses:
+        '200': {description: Токен доступу}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {$ref: '#/components/responses/RateLimit'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /api/expenses:
+    get:
+      tags: [Expenses]
+      summary: Отримати список витрат
+      parameters:
+        - {in: query, name: dateFrom, schema: {type: string, format: date}}
+        - {in: query, name: dateTo, schema: {type: string, format: date}}
+        - {in: query, name: categoryId, schema: {type: string, format: uuid}}
+        - {in: query, name: limit, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+        - {in: query, name: offset, schema: {type: integer, minimum: 0, default: 0}}
+      responses:
+        '200': {description: Список витрат}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    post:
+      tags: [Expenses]
+      summary: Створити витрату вручну
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ExpenseCreate'}
+      responses:
+        '201': {description: Витрату створено}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {$ref: '#/components/responses/RateLimit'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /api/expenses/natural-language:
+    post:
+      tags: [Expenses]
+      summary: Розпізнати витрату з тексту за допомогою AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NaturalText'}
+      responses:
+        '201': {description: Витрату розпізнано}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {$ref: '#/components/responses/RateLimit'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/expenses/{expenseId}:
+    parameters:
+      - {in: path, name: expenseId, required: true, schema: {type: string, format: uuid}}
+    get:
+      tags: [Expenses]
+      summary: Отримати витрату
+      responses:
+        '200': {description: Витрата}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    put:
+      tags: [Expenses]
+      summary: Оновити витрату
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ExpenseUpdate'}
+      responses:
+        '200': {description: Витрату оновлено}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    delete:
+      tags: [Expenses]
+      summary: Видалити витрату
+      responses:
+        '204': {description: Витрату видалено}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /api/categories:
+    get:
+      tags: [Categories]
+      summary: Отримати категорії
+      responses:
+        '200': {description: Список категорій}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    post:
+      tags: [Categories]
+      summary: Створити категорію
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CategoryCreate'}
+      responses:
+        '201': {description: Категорію створено}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {$ref: '#/components/responses/RateLimit'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /api/categories/{category_id}:
+    parameters:
+      - in: path
+        name: category_id
+        required: true
+        description: Ідентифікатор категорії, як він збережений у системі.
+        schema:
+          type: string
+    put:
+      tags: [Categories]
+      summary: Оновити категорію
+      description: Оновлює назву та/або колір категорії. У поточній реалізації поле name є обов’язковим у тілі запиту.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CategoryCreate'}
+      responses:
+        '200':
+          description: Категорію оновлено
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Category'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    delete:
+      tags: [Categories]
+      summary: Видалити категорію
+      description: Видаляє категорію за ідентифікатором. Поточна реалізація не перевіряє, чи використовується категорія у витратах.
+      responses:
+        '200':
+          description: Категорію видалено
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CategoryDeleteResult'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /api/analytics/summary:
+    get:
+      tags: [Analytics]
+      summary: Загальна статистика витрат
+      parameters:
+        - {in: query, name: dateFrom, schema: {type: string, format: date}}
+        - {in: query, name: dateTo, schema: {type: string, format: date}}
+      responses:
+        '200': {description: Загальна статистика}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {$ref: '#/components/responses/RateLimit'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /api/analytics/by-category:
+    get:
+      tags: [Analytics]
+      summary: Статистика витрат за категоріями
+      responses:
+        '200': {description: Статистика за категоріями}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {$ref: '#/components/responses/RateLimit'}
+        '500': {$ref: '#/components/responses/InternalError'}
+  /api/expenses/{expenseId}/classify:
+    parameters:
+      - {in: path, name: expenseId, required: true, schema: {type: string, format: uuid}}
+    post:
+      tags: [Expenses]
+      summary: Запустити AI-класифікацію витрати
+      responses:
+        '200': {description: Результат класифікації}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {$ref: '#/components/responses/RateLimit'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status, code, detail, instance, traceId]
+      properties:
+        type: {type: string, format: uri}
+        title: {type: string}
+        status: {type: integer}
+        code: {type: string}
+        detail: {type: string}
+        instance: {type: string}
+        traceId: {type: string}
+        errors:
+          type: object
+          additionalProperties:
             type: array
             items: {type: string}
         retryAfterSeconds: {type: integer, minimum: 0}

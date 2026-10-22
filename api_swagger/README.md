@@ -8,7 +8,7 @@ python -m venv .venv
 pip install -r requirements.txt
 uvicorn main:app --reload
 ```
-
+Для тестування треба виконати авторизацію з токеном (demo-token)
 Відкривати:
 - Swagger UI: http://127.0.0.1:8000/docs
 - ReDoc: http://127.0.0.1:8000/redoc
