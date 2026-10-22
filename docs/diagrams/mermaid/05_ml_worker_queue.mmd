@@ -1,0 +1,36 @@
+sequenceDiagram
+    autonumber
+    participant A as REST API
+    participant D as PostgreSQL jobs
+    participant W1 as Worker 1
+    participant W2 as Worker 2
+    participant M as ML модель
+    Note over A,M: CF-05 • Проєктне рішення • jobs J1 і J2 для різних витрат
+    A->>D: INSERT jobs J1, J2<br/>sourceVersion, UNIQUE · COMMIT
+    Note over A,D: Після COMMIT клієнти отримують 202 і jobId
+    par Claim J1
+        W1->>D: FOR UPDATE SKIP LOCKED<br/>claim J1, token T1 · COMMIT
+        D-->>W1: J1, lease T1
+    and Claim J2
+        W2->>D: FOR UPDATE SKIP LOCKED<br/>claim J2, token T2 · COMMIT
+        D-->>W2: J2, lease T2
+    end
+    par Класифікація J1
+        W1->>M: Опис E1 · timeout 5 с
+        M-->>W1: Категорія та confidence
+    and Класифікація J2
+        W2->>M: Опис E2 · timeout 5 с
+        M--xW2: Timeout
+    end
+    W1->>D: BEGIN · lock job, потім expense<br/>перевірити lease T1 і sourceVersion
+    alt Lease і версія актуальні
+        W1->>D: INSERT prediction · job done<br/>COMMIT
+    else Витрату змінено
+        W1->>D: job superseded · COMMIT
+    else Lease уже не належить W1
+        W1->>D: ROLLBACK · відкинути результат
+    end
+    W2->>D: Якщо T2 актуальний<br/>retry_wait, availableAt · COMMIT
+    Note over W2,M: Backoff і jitter • після 3 спроб failed
+    A->>D: GET jobId · перевірка власника
+    D-->>A: Поточний статус і пропозиція, якщо готова

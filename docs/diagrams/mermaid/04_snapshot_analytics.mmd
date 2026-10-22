@@ -1,0 +1,26 @@
+sequenceDiagram
+    autonumber
+    participant U as Web UI
+    participant R as Analytics API
+    participant W as Expense API
+    participant D as PostgreSQL
+    Note over U,D: CF-04 • Проєктне рішення • один звіт, одне з’єднання
+    U->>R: GET /api/analytics/summary
+    R->>D: BEGIN REPEATABLE READ<br/>READ ONLY
+    R->>D: SELECT SUM(amount)<br/>snapshot S0 встановлено
+    D-->>R: 1000 грн у S0
+    par Новий запис
+        U->>W: POST /api/expenses, 100 грн
+        W->>D: BEGIN · INSERT expense · COMMIT
+        W-->>U: 201 Created
+    and Продовження читання S0
+        R->>D: SELECT COUNT та суми категорій<br/>у тій самій транзакції
+        D-->>R: 10 витрат, категорії разом 1000 грн
+    end
+    R->>D: COMMIT
+    R-->>U: 200, узгоджений звіт зі S0
+    U->>R: Наступне оновлення звіту
+    R->>D: Нова read-only транзакція<br/>новий snapshot S1
+    D-->>R: 11 витрат, 1100 грн
+    R->>D: COMMIT
+    R-->>U: 200, нові узгоджені дані
