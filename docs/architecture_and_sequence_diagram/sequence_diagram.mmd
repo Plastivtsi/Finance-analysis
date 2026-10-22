@@ -1,0 +1,24 @@
+sequenceDiagram
+    actor User as Користувач
+    participant UI as Frontend (SPA)
+    participant API as Backend (FastAPI)
+    participant ML as ML-компонент
+    participant DB as PostgreSQL
+
+    User->>UI: Вводить опис і суму витрати
+    UI->>API: Надсилає запит через REST API
+    API->>API: Перевіряє та нормалізує дані
+    API->>ML: Запит категорії витрати
+    alt ML-компонент доступний
+        ML-->>API: Категорія та confidence
+        API-->>UI: Повертає запропоновану категорію
+        User->>UI: Підтверджує або змінює категорію
+    else ML-компонент недоступний
+        API-->>UI: Пропонує ручне введення категорії
+        User->>UI: Обирає категорію самостійно
+    end
+    UI->>API: Надсилає підтверджені дані
+    API->>DB: Зберігає транзакцію
+    DB-->>API: Підтверджує збереження
+    API-->>UI: Повертає результат операції
+    UI-->>User: Відображає оновлені дані
