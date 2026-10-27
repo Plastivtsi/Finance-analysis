@@ -114,28 +114,34 @@ Idempotent Request і атомарна транзакція · Проєктне 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor C as Client
-    participant API as FastAPI
-    participant DB as PostgreSQL
-
-    C->>API: POST /api/expenses + Idempotency-Key
-    API->>API: Authenticate and validate request
-    API->>DB: BEGIN
-    API->>DB: INSERT idempotency key ON CONFLICT DO NOTHING
-    alt New key reserved
-        API->>DB: INSERT expense and store response
-        API->>DB: COMMIT
-        API-->>C: 201 Created + expenseId
-    else Key already exists
-        API->>DB: Read stored key, hash and response
-        alt Same request hash
-            API->>DB: COMMIT / end read transaction
-            API-->>C: Replay stored response
-        else Different request hash
-            API->>DB: ROLLBACK / end transaction
-            API-->>C: 409 IDEMPOTENCY_KEY_REUSED
-        end
+    participant C as Web UI
+    participant A as API запит A
+    participant B as API повтор B
+    participant D as PostgreSQL
+    Note over C,D: CF-01 • Проєктне рішення • один користувач і ключ K
+    par Перша спроба
+        C->>A: POST /api/expenses<br/>Key K, hash H
+    and Повтор через затримку
+        C->>B: POST /api/expenses<br/>Key K, hash H
     end
+    A->>D: BEGIN · INSERT ключ K<br/>ON CONFLICT DO NOTHING
+    D-->>A: Ключ зарезервовано
+    B->>D: BEGIN · INSERT ключ K<br/>ON CONFLICT DO NOTHING
+    Note over B,D: UNIQUE змушує B чекати транзакцію A
+    A->>D: INSERT expense E<br/>Зберегти H і відповідь 201 з E
+    A->>D: COMMIT
+    A--xC: Відповідь 201 загубилась
+    D-->>B: INSERT не додав рядка
+    B->>D: SELECT ключ K<br/>окремий запит після очікування
+    D-->>B: Збережені hash H та відповідь
+    alt Хеш тіла збігається
+        B->>D: COMMIT
+        B-->>C: Збережена 201, expenseId E
+    else Ключ повторили з іншим тілом
+        B->>D: ROLLBACK
+        B-->>C: 409 IDEMPOTENCY_KEY_REUSED
+    end
+    Note over C,D: Витрата та відповідь фіксуються атомарно
 ```
 
 ### CF-02 · FR-05, FR-20, NFR-06
@@ -212,7 +218,6 @@ sequenceDiagram
     D-->>S: amount 120, version 8
     S-->>B: amount 120, version 8
     Note over B,S: Користувач узгоджує зміни перед новим PUT
-
 ```
 
 ### CF-03 · FR-14, FR-16, FR-20, FR-22, NFR-06
@@ -263,28 +268,29 @@ Pessimistic Locking і атомарний перехід стану · Проє�
 ```mermaid
 sequenceDiagram
     autonumber
-    actor C as Recipient
-    participant API as FastAPI
-    participant DB as PostgreSQL
-
-    C->>API: POST /api/groups/{groupId}/settlements/{settlementId}/confirm
-    API->>API: Authenticate; check membership and recipient role
-    API->>DB: BEGIN
-    API->>DB: SELECT group FOR UPDATE
-    API->>DB: SELECT settlement FOR UPDATE
-    API->>DB: Re-check permissions, state and amount
-    alt Settlement is pending and valid
-        API->>DB: UPDATE settlement SET state='confirmed'
-        API->>DB: INSERT confirmation audit event
-        API->>DB: COMMIT
-        API-->>C: 200 OK + confirmed settlement
-    else Already confirmed or invalid state
-        API->>DB: ROLLBACK / end transaction
-        API-->>C: 409 SETTLEMENT_STATE_CONFLICT
-    else Invalid amount or business rule
-        API->>DB: ROLLBACK
-        API-->>C: 422 Unprocessable Entity
+    participant C as Одержувач
+    participant A as API запит A
+    participant B as API запит B
+    participant D as PostgreSQL
+    Note over C,D: CF-03 • Проєктне рішення • settlement S у стані pending
+    par Вкладка 1
+        C->>A: POST confirm S
+    and Вкладка 2
+        C->>B: POST confirm S
     end
+    A->>D: BEGIN · lock group G<br/>SELECT FOR UPDATE
+    A->>D: lock settlement S<br/>перевірити одержувача і pending
+    B->>D: BEGIN · lock group G<br/>SELECT FOR UPDATE
+    Note over B,D: Запит B чекає звільнення group lock
+    A->>D: Перевірити суму та залишок<br/>UPDATE S = confirmed · INSERT audit
+    A->>D: COMMIT · звільнити блокування
+    A-->>C: 200, S confirmed
+    D-->>B: Group lock отримано
+    B->>D: lock S · перечитати стан і права
+    D-->>B: S уже confirmed
+    B->>D: COMMIT без повторної зміни
+    B-->>C: 200, той самий S confirmed
+    Note over C,D: Облік боргу враховує S лише один раз
 ```
 
 ### CF-04 · FR-08, FR-17, FR-18, NFR-06
@@ -334,26 +340,30 @@ MVCC і Snapshot Isolation через REPEATABLE READ · Проєктне ріш
 ```mermaid
 sequenceDiagram
     autonumber
-    actor C as Client
-    participant API as FastAPI
-    participant DB as PostgreSQL
-    participant W as Expense writer
-
-    C->>API: GET /api/analytics/summary
-    API->>DB: BEGIN READ ONLY ISOLATION LEVEL REPEATABLE READ
-    API->>DB: SELECT totals (snapshot S0)
-    DB-->>API: Totals from S0
-    API->>DB: SELECT count and category aggregates
-    DB-->>API: Aggregates from same S0
-
-    par Analytics transaction continues on snapshot S0
-        API->>DB: COMMIT
-        API-->>C: Consistent summary response
-    and Concurrent expense write
-        W->>DB: BEGIN
-        W->>DB: INSERT expense
-        W->>DB: COMMIT
+    participant U as Web UI
+    participant R as Analytics API
+    participant W as Expense API
+    participant D as PostgreSQL
+    Note over U,D: CF-04 • Проєктне рішення • один звіт, одне з’єднання
+    U->>R: GET /api/analytics/summary
+    R->>D: BEGIN REPEATABLE READ<br/>READ ONLY
+    R->>D: SELECT SUM(amount)<br/>snapshot S0 встановлено
+    D-->>R: 1000 грн у S0
+    par Новий запис
+        U->>W: POST /api/expenses, 100 грн
+        W->>D: BEGIN · INSERT expense · COMMIT
+        W-->>U: 201 Created
+    and Продовження читання S0
+        R->>D: SELECT COUNT та суми категорій<br/>у тій самій транзакції
+        D-->>R: 10 витрат, категорії разом 1000 грн
     end
+    R->>D: COMMIT
+    R-->>U: 200, узгоджений звіт зі S0
+    U->>R: Наступне оновлення звіту
+    R->>D: Нова read-only транзакція<br/>новий snapshot S1
+    D-->>R: 11 витрат, 1100 грн
+    R->>D: COMMIT
+    R-->>U: 200, нові узгоджені дані
 ```
 
 ### CF-05 · FR-06, NFR-01, NFR-05
@@ -409,45 +419,40 @@ Producer–Consumer, Competing Consumers і Retry with Backoff · Проєктн
 ```mermaid
 sequenceDiagram
     autonumber
-    actor C as Client
-    participant API as FastAPI
-    participant DB as PostgreSQL Jobs table
+    participant A as REST API
+    participant D as PostgreSQL jobs
     participant W1 as Worker 1
     participant W2 as Worker 2
-    participant ML as ML component
-
-    C->>API: POST /api/expenses/{id}/classify
-    API->>DB: BEGIN; insert job if not duplicate
-    API->>DB: COMMIT
-    API-->>C: 202 Accepted + jobId
-
-    par Worker 1 claims an available job
-        W1->>DB: SELECT ... FOR UPDATE SKIP LOCKED
-        DB-->>W1: Job A + leaseToken
-    and Worker 2 claims another available job
-        W2->>DB: SELECT ... FOR UPDATE SKIP LOCKED
-        DB-->>W2: Job B + leaseToken
+    participant M as ML модель
+    Note over A,M: CF-05 • Проєктне рішення • jobs J1 і J2 для різних витрат
+    A->>D: INSERT jobs J1, J2<br/>sourceVersion, UNIQUE · COMMIT
+    Note over A,D: Після COMMIT клієнти отримують 202 і jobId
+    par Claim J1
+        W1->>D: FOR UPDATE SKIP LOCKED<br/>claim J1, token T1 · COMMIT
+        D-->>W1: J1, lease T1
+    and Claim J2
+        W2->>D: FOR UPDATE SKIP LOCKED<br/>claim J2, token T2 · COMMIT
+        D-->>W2: J2, lease T2
     end
-
-    W1->>ML: Classify expense A
-    W2->>ML: Classify expense B
-    ML-->>W1: Prediction A
-    ML-->>W2: Prediction B
-
-    W1->>DB: Verify lease and sourceVersion; save result
-    alt Result is current and lease valid
-        W1->>DB: Mark job done
-    else Expense changed or lease expired
-        W1->>DB: Mark superseded / reject stale result
+    par Класифікація J1
+        W1->>M: Опис E1 · timeout 5 с
+        M-->>W1: Категорія та confidence
+    and Класифікація J2
+        W2->>M: Опис E2 · timeout 5 с
+        M--xW2: Timeout
     end
-
-    opt Temporary ML failure
-        W2->>DB: Set retry_wait and availableAt with backoff
+    W1->>D: BEGIN · lock job, потім expense<br/>перевірити lease T1 і sourceVersion
+    alt Lease і версія актуальні
+        W1->>D: INSERT prediction · job done<br/>COMMIT
+    else Витрату змінено
+        W1->>D: job superseded · COMMIT
+    else Lease уже не належить W1
+        W1->>D: ROLLBACK · відкинути результат
     end
-    C->>API: GET /api/classification-jobs/{jobId}
-    API->>DB: Read job status (check ownership)
-    DB-->>API: Status and result, if available
-    API-->>C: 200 OK
+    W2->>D: Якщо T2 актуальний<br/>retry_wait, availableAt · COMMIT
+    Note over W2,M: Backoff і jitter • після 3 спроб failed
+    A->>D: GET jobId · перевірка власника
+    D-->>A: Поточний статус і пропозиція, якщо готова
 ```
 
 # Перевірка і захист рішення
