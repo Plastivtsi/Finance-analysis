@@ -183,34 +183,36 @@ Optimistic Concurrency Control через version · Проєктне рішен
 ```mermaid
 sequenceDiagram
     autonumber
-    actor A as Client A
-    actor B as Client B
-    participant API as FastAPI
-    participant DB as PostgreSQL
-
-    par Both clients read the expense
-        A->>API: GET /api/expenses/{id}
-        API->>DB: SELECT expense, version=7
-        DB-->>API: Expense + version 7
-        API-->>A: 200 OK, version=7
-    and
-        B->>API: GET /api/expenses/{id}
-        API->>DB: SELECT expense, version=7
-        DB-->>API: Expense + version 7
-        API-->>B: 200 OK, version=7
+    participant A as Телефон
+    participant B as Ноутбук
+    participant S as REST API
+    participant D as PostgreSQL
+    Note over A,D: CF-02 • Проєктне рішення • дві форми одного власника
+    A->>S: GET expense E
+    S->>D: SELECT E з перевіркою власника
+    D-->>S: amount 100, version 7
+    S-->>A: expense E, version 7
+    B->>S: GET expense E
+    S->>D: SELECT E з перевіркою власника
+    D-->>S: amount 100, version 7
+    S-->>B: expense E, version 7
+    par Конкурентне збереження
+        A->>S: PUT amount 120<br/>expectedVersion 7
+    and Стара форма
+        B->>S: PUT amount 130<br/>expectedVersion 7
     end
+    S->>D: UPDATE amount=120, version=8<br/>WHERE id=E AND version=7 AND owner=user
+    D-->>S: 1 рядок · COMMIT
+    S-->>A: 200, version 8
+    S->>D: UPDATE amount=130, version=8<br/>WHERE id=E AND version=7 AND owner=user
+    D-->>S: 0 рядків
+    S-->>B: 409 VERSION_CONFLICT
+    B->>S: GET актуальної витрати
+    S->>D: SELECT E з перевіркою власника
+    D-->>S: amount 120, version 8
+    S-->>B: amount 120, version 8
+    Note over B,S: Користувач узгоджує зміни перед новим PUT
 
-    A->>API: PUT expense, expectedVersion=7
-    API->>DB: UPDATE ... WHERE id AND owner AND version=7; version=8
-    DB-->>API: 1 row updated
-    API-->>A: 200 OK, version=8
-
-    B->>API: PUT expense, expectedVersion=7
-    API->>DB: UPDATE ... WHERE id AND owner AND version=7
-    DB-->>API: 0 rows updated
-    API-->>B: 409 VERSION_CONFLICT
-    B->>API: GET latest expense
-    API-->>B: Current data, version=8
 ```
 
 ### CF-03 · FR-14, FR-16, FR-20, FR-22, NFR-06
