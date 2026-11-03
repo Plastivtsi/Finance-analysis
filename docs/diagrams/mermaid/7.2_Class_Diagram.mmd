@@ -1,0 +1,58 @@
+classDiagram
+    direction LR
+    class User {
+        +UUID id
+        +String email
+        +String passwordHash
+        +String preferredCurrency
+    }
+    class Expense {
+        +UUID id
+        +UUID payerId
+        +Decimal amount
+        +String currency
+        +String description
+        +UUID categoryId
+        +UUID groupId
+    }
+    class Category {
+        +UUID id
+        +String name
+    }
+    class Group {
+        +UUID id
+        +String name
+        +String baseCurrency
+        +String status
+    }
+    class GroupMember {
+        +UUID groupId
+        +UUID userId
+        +String role
+    }
+    class ExpenseShare {
+        +UUID expenseId
+        +UUID userId
+        +Decimal amount
+    }
+    class Settlement {
+        +UUID groupId
+        +UUID debtorId
+        +UUID creditorId
+        +Decimal amount
+        +String status
+    }
+    class MLPrediction {
+        +UUID expenseId
+        +UUID suggestedCategoryId
+        +Float confidence
+    }
+    User "1" --> "0..*" Expense : оплачує
+    Group "0..1" --> "0..*" Expense : містить
+    User "1" --> "0..*" GroupMember : бере участь
+    Group "1" --> "0..*" GroupMember : має учасників
+    Expense "1" --> "0..*" ExpenseShare : розподіляється
+    User "1" --> "0..*" ExpenseShare : має частку
+    Group "1" --> "0..*" Settlement : розрахунки
+    Category "1" --> "0..*" Expense : категоризує
+    Expense "1" --> "0..1" MLPrediction : прогноз

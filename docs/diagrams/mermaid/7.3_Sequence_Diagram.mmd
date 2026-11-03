@@ -1,0 +1,28 @@
+sequenceDiagram
+    autonumber
+    actor User as Користувач
+    participant UI as Web UI
+    participant API as Backend API
+    participant Auth as Auth Service
+    participant ML as ML Service
+    participant DB as PostgreSQL
+    User->>UI: Створити групову витрату
+    UI->>API: POST /api/groups/{id}/expenses
+    API->>Auth: Перевірити членство у групі
+    Auth-->>API: Результат перевірки
+    alt Доступ дозволено
+        API->>ML: Визначити категорію
+        ML-->>API: Категорія та confidence
+        API-->>UI: Запропонувати категорію
+        UI-->>User: Показати результат
+        User->>UI: Підтвердити категорію
+        UI->>API: Зберегти витрату
+        API->>DB: Записати витрату та частки
+        DB-->>API: Успішне збереження
+        API->>API: Перерахувати баланси
+        API-->>UI: Оновлені баланси
+        UI-->>User: Показати результат
+    else Доступ заборонено
+        API-->>UI: HTTP 403 Forbidden
+        UI-->>User: Повідомлення про помилку
+    end

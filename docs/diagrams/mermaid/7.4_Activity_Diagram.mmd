@@ -1,0 +1,23 @@
+flowchart TD
+    A([Початок])
+    B["Завершення подорожі"]
+    C["Завантаження витрат"]
+    D["Обчислення балансів"]
+    E{"Борги відсутні?"}
+    F["Сформувати перекази"]
+    G["Підтвердити погашення"]
+    H["Повторно обчислити баланси"]
+    I["Підсумковий звіт"]
+    J([Завершення])
+    A --> B --> C --> D --> E
+    E -->|Так| I
+    E -->|Ні| F --> G --> H --> E
+    I --> J
+    classDef startEnd fill:#D5F5D5,stroke:#238B45,color:#123B20
+    classDef process fill:#DCEBFF,stroke:#4478AA,color:#142F50
+    classDef decision fill:#FFF0BE,stroke:#B58A24,color:#4A3600
+    classDef payment fill:#FFDCDD,stroke:#C86C75,color:#572329
+    class A,J startEnd
+    class B,C,D,H,I process
+    class E decision
+    class F,G payment
